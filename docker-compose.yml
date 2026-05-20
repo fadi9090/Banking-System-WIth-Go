@@ -1,0 +1,80 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: banking_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 96833947
+      POSTGRES_DB: bank_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - banking_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: migrate/migrate:v4.17.0
+    depends_on:
+      db:
+        condition: service_healthy
+    container_name: banking_migrations
+    networks:
+      - banking_network
+    volumes:
+      - ./datasource/migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://postgres:96833947@db:5432/bank_db?sslmode=disable", "up"]
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile 
+    container_name: bank_app
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: 96833947
+      DB_NAME: bank_db
+    ports:
+      - "8080:8080"
+    networks:
+      - banking_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: banking_admin
+    networks:
+      - banking_network
+    environment:
+            PGADMIN_DEFAULT_EMAIL: admin@admin.com
+            PGADMIN_DEFAULT_PASSWORD: admin123
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_USER: postgres
+            DB_PASSWORD: 96833947
+            DB_NAME: bank_db
+            API_KEY: secret-api-key-2024
+            SERVER_PORT: 8080
+    ports:
+      - "5050:80"
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+  
+
+networks:
+  banking_network:
+    driver: bridge
+
+volumes:
+  db_data:
